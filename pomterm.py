@@ -118,18 +118,15 @@ class DataProcessor:
         forecast = model.predict(future)
         return forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
 
-    def predict_all_items(self, time_index=1799):
+    def predict_all_items(self, time_index=1799, num_items=None):
         """
         Make predictions for all items in the dataset.
         Args:
-            periods: Number of days to forecast
+            time_index: Index for time series data
+            num_items: Number of items to process (None for all items)
         Returns:
             DataFrame with predictions for all items
         """
-
-        # periods = len(self.sales_train_evaluation.columns) - time_index - 6
-        print(len(self.sales_train_evaluation.columns))
-        
         # 시작 날짜와 종료 날짜 설정
         start_date = pd.to_datetime('2011-01-29')  # 데이터 시작일
         train_end_date = pd.to_datetime('2016-06-19')  # 훈련 종료일
@@ -149,8 +146,11 @@ class DataProcessor:
         # 훈련 데이터 가져오기
         train_df = self.sales_train_evaluation.iloc[:, 6:]
         
+        # 처리할 아이템 선택
+        items_to_process = self.sales_train_evaluation.head(num_items) if num_items else self.sales_train_evaluation
+        
         # 전체 아이템 수 파악
-        total_items = len(self.sales_train_evaluation)
+        total_items = len(items_to_process)
         print(f"전체 {total_items}개 아이템에 대해 예측을 시작합니다.")
         
         # 진행 상황 추적용 변수
@@ -158,19 +158,15 @@ class DataProcessor:
         success_count = 0
         error_count = 0
         
-        # 모든 아이템 대상으로 예측
-        items_to_process = self.sales_train_evaluation
-        
         # 각 아이템에 대해 예측 수행
         for index, rows in items_to_process.iterrows():
-            
             try:
                 # 진행률 계산 및 표시
                 progress = (index + 1) / total_items * 100
                 elapsed_time = (pd.Timestamp.now() - start_time).total_seconds() / 60  # 분 단위
                 
                 # 아이템 이름 가져오기
-                name = self.sales_train_evaluation.iloc[index, 0]
+                name = rows['id']
                 print(f"[{progress:.1f}% | {index+1}/{total_items} | {elapsed_time:.1f}분 경과] 아이템: {name} 예측 중...")
                 
                 # 날짜 열에서 훈련 기간에 해당하는 값 찾기
@@ -188,10 +184,8 @@ class DataProcessor:
                     'y': item_values
                 })
                 
-                # Prophet 모델 학습
-                m = Prophet(yearly_seasonality=True, weekly_seasonality=True, daily_seasonality=True)
-                m.add_country_holidays(country_name='US')
-                m.fit(train_data)
+                # Prophet 모델 학습 (train_prophet_model 사용)
+                m = self.train_prophet_model(train_data)
                 
                 # 예측 기간 설정 (2017년 12월 31일까지)
                 future = m.make_future_dataframe(periods=len(result_df), freq='D')
@@ -211,13 +205,13 @@ class DataProcessor:
                 
                 success_count += 1
                 
-                # 중간 저장 (선택적, 100개 아이템마다)
-                if (index + 1) % 1000 == 0:
+                # 중간 저장 (3000개 아이템마다)
+                if (index + 1) % 3000 == 0:
                     temp_result = result_df.copy()
                     temp_result['ds'] = temp_result['ds'].astype(str)
                     temp_result.to_csv(f"prediction_df_checkpoint_{index+1}.csv", index=False)
                     print(f"  중간 결과 저장 완료: prediction_df_checkpoint_{index+1}.csv")
-                    
+                
             except Exception as e:
                 print(f"  아이템 {name} 예측 중 오류 발생: {str(e)}")
                 error_count += 1
@@ -245,7 +239,31 @@ class DataProcessor:
         
         return result_df
 
+    def train_and_predict(self, args):
+        item_id, train_data = args
+        try:
+            # Prophet 모델 학습
+            model = self.train_prophet_model(train_data)
+            
+            # 예측 기간 설정 (2016-06-20부터 2017-12-31까지)
+            future_dates = pd.date_range(start='2016-06-20', end='2017-12-31', freq='D')
+            future = pd.DataFrame({'ds': future_dates})
+            
+            # 예측 수행
+            forecast = model.predict(future)
+            
+            # 결과 저장
+            result = forecast[['ds', 'yhat']].copy()
+            result.columns = ['ds', f'F{item_id}']
+            return result
+        except Exception as e:
+            print(f"Error processing item {item_id}: {str(e)}")
+            return None
+
 dataprocessor = DataProcessor()
 dataprocessor.prepare_prophet_data()
-prediction_df= dataprocessor.predict_all_items()
-prediction_df.to_csv("prediction_df.csv", index = True)
+
+# 모든 아이템에 대해 예측 수행
+prediction_df = dataprocessor.predict_all_items()
+prediction_df.to_csv("prediction_df.csv", index=True)
+print("\n예측이 완료되었습니다. 결과는 prediction_df.csv 파일에 저장되었습니다.")
