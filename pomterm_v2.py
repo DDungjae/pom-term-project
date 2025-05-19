@@ -228,7 +228,7 @@ class DataProcessor:
                 if (index + 1) % 3000 == 0:
                     temp_result = result_df.copy()
                     temp_result['ds'] = temp_result['ds'].astype(str)
-                    temp_result.to_csv(f"prediction_df_checkpoint_{index+1}.csv", index=False)
+                    temp_result.to_csv(f"prediction_df_checkpoint_v2_{index+1}.csv", index=False)
                     print(f"  중간 결과 저장 완료: prediction_df_checkpoint_{index+1}.csv")
                 
             except Exception as e:
@@ -284,5 +284,5 @@ dataprocessor.prepare_prophet_data()
 
 # 모든 아이템에 대해 예측 수행
 prediction_df = dataprocessor.predict_all_items()
-prediction_df.to_csv("prediction_df_final.csv", index=False)
+prediction_df.to_csv("prediction_df_v2_final.csv", index=False)
 print("\n모든 아이템에 대한 예측이 완료되었습니다. 결과는 prediction_df_final.csv 파일에 저장되었습니다.")
